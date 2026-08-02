@@ -139,6 +139,35 @@ const SCHEDULE = [
   { id:"b17", start:"23:00", end:"24:00", label:"Wind down, no screen", cat:"mind", days:ALL },
 ];
 
+const MODULES = {
+  workout: {
+    title: "Workout plan",
+    fields: [
+      { key: "name", placeholder: "Exercise, e.g. Pike push-ups" },
+      { key: "detail", placeholder: "Sets x reps", inputStyle: "max-width:100px" },
+    ],
+    itemType: "checkbox",
+    emptyText: "No exercises yet. Add your push/pull/legs/core moves below.",
+  },
+  reading: {
+    title: "Reading list",
+    fields: [{ key: "title", placeholder: "Book title, e.g. Atomic Habits" }],
+    itemType: "cycle",
+    states: ["to-read", "reading", "done"],
+    initialState: "reading",
+    stateLabels: { "to-read": "To read", reading: "Reading", done: "Done" },
+    emptyText: "Add books as you go. Tap the pill to cycle status.",
+  },
+  log: {
+    title: "Wins / log",
+    fields: [{ key: "text", placeholder: "What happened today" }],
+    itemType: "note",
+    dateStamped: true,
+    newestFirst: true,
+    emptyText: "Log anything worth remembering.",
+  },
+};
+
 function toMin(t){ const [h,m]=t.split(":").map(Number); return h*60+m; }
 function todayKey(){ return new Date().toISOString().slice(0,10); }
 function icon(){ return `<svg viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 4.5" stroke="#020617" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`; }
@@ -188,6 +217,75 @@ async function saveState() {
   render();
 }
 
+function renderModule(moduleKey) {
+  const config = MODULES[moduleKey];
+  const items = state[moduleKey] || [];
+  let html = `<div class="module"><div class="mtitle">${config.title}</div>`;
+
+  if (!items.length) html += `<div class="empty">${config.emptyText}</div>`;
+
+  for (const item of items) {
+    const itemText = config.fields
+      .map(field => item[field.key])
+      .filter(Boolean)
+      .join(moduleKey === "workout" ? " — " : "");
+
+    html += `<div class="item-row">`;
+    if (config.itemType === "checkbox") {
+      html += `<button class="check ${item.done ? "on-orange" : ""}" data-module-action="toggle" data-module="${moduleKey}" data-id="${item.id}">${icon()}</button>`;
+    }
+    if (config.dateStamped) {
+      html += `<span class="logdate">${item.date.slice(5)}</span>`;
+    }
+    html += `<span class="item-text ${item.done ? "done" : ""}">${itemText}</span>`;
+    if (config.itemType === "cycle") {
+      const status = item.status || config.states[0];
+      const stateClass = status === "reading" ? "reading" : status === "done" ? "done" : "";
+      html += `<button class="pill ${stateClass}" data-module-action="cycle" data-module="${moduleKey}" data-id="${item.id}">${config.stateLabels[status] || status}</button>`;
+    }
+    html += `<button class="del" data-module-action="delete" data-module="${moduleKey}" data-id="${item.id}">&times;</button></div>`;
+  }
+
+  html += `<div class="add-row">`;
+  for (const field of config.fields) {
+    html += `<input type="text" id="module-${moduleKey}-${field.key}" placeholder="${field.placeholder}" ${field.inputStyle ? `style="${field.inputStyle}"` : ""} />`;
+  }
+  html += `<button class="add-btn" data-module-add="${moduleKey}">+</button></div></div>`;
+  return html;
+}
+
+function addModuleItem(moduleKey) {
+  const config = MODULES[moduleKey];
+  const fields = Object.fromEntries(config.fields.map(field => [
+    field.key,
+    document.getElementById(`module-${moduleKey}-${field.key}`).value.trim(),
+  ]));
+  if (!fields[config.fields[0].key]) return;
+
+  const item = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, ...fields };
+  if (config.itemType === "checkbox") item.done = false;
+  if (config.itemType === "cycle") item.status = config.initialState || config.states[0];
+  if (config.dateStamped) item.date = todayKey();
+  state[moduleKey] = config.newestFirst ? [item, ...state[moduleKey]] : [...state[moduleKey], item];
+  saveState();
+}
+
+function handleModuleAction(moduleKey, action, id) {
+  const config = MODULES[moduleKey];
+  if (action === "delete") {
+    state[moduleKey] = state[moduleKey].filter(item => item.id !== id);
+  } else if (action === "toggle") {
+    state[moduleKey] = state[moduleKey].map(item => item.id === id ? { ...item, done: !item.done } : item);
+  } else if (action === "cycle") {
+    state[moduleKey] = state[moduleKey].map(item => {
+      if (item.id !== id) return item;
+      const currentIndex = config.states.indexOf(item.status);
+      return { ...item, status: config.states[(currentIndex + 1) % config.states.length] };
+    });
+  }
+  saveState();
+}
+
 function render() {
   const now = new Date();
   const nowMin = now.getHours()*60 + now.getMinutes();
@@ -222,49 +320,10 @@ function render() {
   }
   html += `</div>`;
 
-  html += `<div class="module"><div class="mtitle" style="color:#fb923c">Workout plan</div>`;
-  if (!state.workout.length) html += `<div class="empty">No exercises yet. Add your push/pull/legs/core moves below.</div>`;
-  for (const it of state.workout) {
-    html += `<div class="item-row">
-      <button class="check ${it.done?'on-orange':''}" data-toggle-workout="${it.id}">${icon()}</button>
-      <span class="item-text ${it.done?'done':''}">${it.name}${it.detail?` — ${it.detail}`:""}</span>
-      <button class="del" data-del-workout="${it.id}">&times;</button>
-    </div>`;
-  }
-  html += `<div class="add-row">
-      <input type="text" id="w-name" placeholder="Exercise, e.g. Pike push-ups" />
-      <input type="text" id="w-detail" placeholder="Sets x reps" style="max-width:100px" />
-      <button class="add-btn" id="w-add">+</button>
-    </div></div>`;
-
-  html += `<div class="module"><div class="mtitle" style="color:#2dd4bf">Reading list</div>`;
-  if (!state.reading.length) html += `<div class="empty">Add books as you go. Tap the pill to cycle status.</div>`;
-  const statusLabel = { "to-read":"To read", reading:"Reading", done:"Done" };
-  for (const it of state.reading) {
-    html += `<div class="item-row">
-      <span class="item-text">${it.title}</span>
-      <span class="pill ${it.status==='reading'?'reading':''} ${it.status==='done'?'done':''}" data-cycle-reading="${it.id}">${statusLabel[it.status]}</span>
-      <button class="del" data-del-reading="${it.id}">&times;</button>
-    </div>`;
-  }
-  html += `<div class="add-row">
-      <input type="text" id="r-title" placeholder="Book title, e.g. Atomic Habits" />
-      <button class="add-btn" id="r-add">+</button>
-    </div></div>`;
-
-  html += `<div class="module"><div class="mtitle" style="color:#a78bfa">Wins / log</div>`;
-  if (!state.log.length) html += `<div class="empty">Log anything worth remembering.</div>`;
-  for (const it of state.log) {
-    html += `<div class="item-row">
-      <span class="logdate">${it.date.slice(5)}</span>
-      <span class="item-text">${it.text}</span>
-      <button class="del" data-del-log="${it.id}">&times;</button>
-    </div>`;
-  }
-  html += `<div class="add-row">
-      <input type="text" id="l-text" placeholder="What happened today" />
-      <button class="add-btn" id="l-add">+</button>
-    </div></div>
+  html += renderModule("workout");
+  html += renderModule("reading");
+  html += renderModule("log");
+  html += `
     <div class="status" id="refresh">${saving ? "saving…" : "tap to refresh"} \u2022 <span id="reconnect" style="text-decoration:underline">reconnect</span></div>`;
 
   app.innerHTML = html;
@@ -289,53 +348,12 @@ function wireEvents() {
     state.completedByDate[today] = day;
     saveState();
   });
-  app.querySelectorAll("[data-toggle-workout]").forEach(el => el.onclick = () => {
-    const id = el.dataset.toggleWorkout;
-    state.workout = state.workout.map(it => it.id===id ? {...it, done:!it.done} : it);
-    saveState();
+  app.querySelectorAll("[data-module-action]").forEach(el => el.onclick = () => {
+    handleModuleAction(el.dataset.module, el.dataset.moduleAction, el.dataset.id);
   });
-  app.querySelectorAll("[data-del-workout]").forEach(el => el.onclick = () => {
-    state.workout = state.workout.filter(it => it.id !== el.dataset.delWorkout);
-    saveState();
+  app.querySelectorAll("[data-module-add]").forEach(el => el.onclick = () => {
+    addModuleItem(el.dataset.moduleAdd);
   });
-  const wAdd = document.getElementById("w-add");
-  if (wAdd) wAdd.onclick = () => {
-    const name = document.getElementById("w-name").value.trim();
-    const detail = document.getElementById("w-detail").value.trim();
-    if (!name) return;
-    state.workout = [...state.workout, { id: Date.now().toString(), name, detail, done:false }];
-    saveState();
-  };
-
-  app.querySelectorAll("[data-cycle-reading]").forEach(el => el.onclick = () => {
-    const id = el.dataset.cycleReading;
-    const order = ["to-read","reading","done"];
-    state.reading = state.reading.map(it => it.id===id ? {...it, status: order[(order.indexOf(it.status)+1)%3]} : it);
-    saveState();
-  });
-  app.querySelectorAll("[data-del-reading]").forEach(el => el.onclick = () => {
-    state.reading = state.reading.filter(it => it.id !== el.dataset.delReading);
-    saveState();
-  });
-  const rAdd = document.getElementById("r-add");
-  if (rAdd) rAdd.onclick = () => {
-    const title = document.getElementById("r-title").value.trim();
-    if (!title) return;
-    state.reading = [...state.reading, { id: Date.now().toString(), title, status:"reading" }];
-    saveState();
-  };
-
-  app.querySelectorAll("[data-del-log]").forEach(el => el.onclick = () => {
-    state.log = state.log.filter(it => it.id !== el.dataset.delLog);
-    saveState();
-  });
-  const lAdd = document.getElementById("l-add");
-  if (lAdd) lAdd.onclick = () => {
-    const text = document.getElementById("l-text").value.trim();
-    if (!text) return;
-    state.log = [{ id: Date.now().toString(), text, date: todayKey() }, ...state.log];
-    saveState();
-  };
 }
 
 if (GIST_ID && GITHUB_TOKEN) {
