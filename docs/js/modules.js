@@ -1,6 +1,7 @@
 export const MODULES = {
   workout: {
     title: "Workout plan",
+    icon: "dumbbell",
     fields: [
       { key: "name", placeholder: "Exercise, e.g. Pike push-ups" },
       { key: "detail", placeholder: "Sets x reps", inputStyle: "max-width:100px" },
@@ -10,6 +11,7 @@ export const MODULES = {
   },
   reading: {
     title: "Reading list",
+    icon: "book-open",
     fields: [{ key: "title", placeholder: "Book title, e.g. Atomic Habits" }],
     itemType: "cycle",
     states: ["to-read", "reading", "done"],
@@ -19,6 +21,7 @@ export const MODULES = {
   },
   log: {
     title: "Wins / log",
+    icon: "notebook-pen",
     fields: [{ key: "text", placeholder: "What happened today" }],
     itemType: "note",
     dateStamped: true,
@@ -27,32 +30,29 @@ export const MODULES = {
   },
 };
 
-function icon() {
-  return `<svg viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 4.5" stroke="#020617" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-}
-
 export function renderModule(moduleKey, items) {
   const config = MODULES[moduleKey];
-  let html = `<div class="module"><div class="mtitle">${config.title}</div>`;
+  let html = `<section class="module module-${moduleKey}"><div class="mtitle"><span class="icon" data-icon="${config.icon}" aria-hidden="true"></span>${config.title}</div>`;
 
   if (!items.length) html += `<div class="empty">${config.emptyText}</div>`;
 
   for (const item of items) {
+    const readingStatus = moduleKey === "reading" ? (item.status || config.states[0]) : "";
     const itemText = config.fields
       .map(field => item[field.key])
       .filter(Boolean)
       .join(moduleKey === "workout" ? " — " : "");
 
-    html += `<div class="item-row">`;
+    html += `<div class="item-row ${moduleKey}-row ${readingStatus ? `is-${readingStatus}` : ""}">`;
     if (config.itemType === "checkbox") {
-      html += `<button class="check ${item.done ? "on-orange" : ""}" data-module-action="toggle" data-module="${moduleKey}" data-id="${item.id}">${icon()}</button>`;
+      html += `<button class="check ${item.done ? "on-orange" : ""}" data-module-action="toggle" data-module="${moduleKey}" data-id="${item.id}" aria-label="Mark ${itemText} ${item.done ? "incomplete" : "complete"}"><span class="icon" data-icon="check" aria-hidden="true"></span></button>`;
     }
     if (config.dateStamped) {
       html += `<span class="logdate">${item.date.slice(5)}</span>`;
     }
     html += `<span class="item-text ${item.done ? "done" : ""}">${itemText}</span>`;
     if (config.itemType === "cycle") {
-      const status = item.status || config.states[0];
+      const status = readingStatus;
       const stateClass = status === "reading" ? "reading" : status === "done" ? "done" : "";
       html += `<button class="pill ${stateClass}" data-module-action="cycle" data-module="${moduleKey}" data-id="${item.id}">${config.stateLabels[status] || status}</button>`;
     }

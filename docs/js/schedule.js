@@ -1,10 +1,3 @@
-const CATS = {
-  training: { color: "#f97316" },
-  mind: { color: "#2dd4bf" },
-  career: { color: "#a78bfa" },
-  base: { color: "#94a3b8" },
-};
-
 const ALL = [0, 1, 2, 3, 4, 5, 6];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -35,17 +28,39 @@ function toMin(time) {
   return hours * 60 + minutes;
 }
 
-function icon() {
-  return `<svg viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 4.5" stroke="#020617" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-}
-
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, char => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
   })[char]);
 }
 
-export function renderSchedule(schedule, completedByDate, now = new Date()) {
+function dayOfWeekForKey(dateKey) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+}
+
+function previousDateKey(dateKey) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day - 1));
+  return date.toISOString().slice(0, 10);
+}
+
+export function computeScheduleStats(schedule, completedByDate, todayKey = new Date().toISOString().slice(0, 10)) {
+  let streak = 0;
+  let dateKey = todayKey;
+
+  while (true) {
+    const expectedBlocks = schedule.filter(block => block.days.includes(dayOfWeekForKey(dateKey)));
+    const completed = completedByDate[dateKey] || {};
+    const isComplete = expectedBlocks.length > 0 && expectedBlocks.every(block => completed[block.id]);
+    if (!isComplete) break;
+    streak += 1;
+    dateKey = previousDateKey(dateKey);
+  }
+  return { streak };
+}
+
+export function renderSchedule(schedule, completedByDate, stats, now = new Date()) {
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const dayNum = now.getDay();
   const blocks = schedule.filter(block => block.days.includes(dayNum));
@@ -56,24 +71,23 @@ export function renderSchedule(schedule, completedByDate, now = new Date()) {
   const dateStr = now.toLocaleDateString(undefined, { weekday:"long", month:"short", day:"numeric" });
 
   let html = `
-    <div class="header"><h2>Daily reset</h2><span class="date">${dateStr}</span></div>
+    <div class="header"><div><p class="eyebrow">Today’s practice</p><h1 class="page-title"><span class="icon" data-icon="calendar-days" aria-hidden="true"></span>Daily reset</h1></div><span class="date">${dateStr}</span></div>
     <div class="progress-row">
       <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
       <span class="pct">${pct}% done</span>
     </div>
-    <div id="timeline">`;
+    <div id="timeline" class="timeline" style="--streak-line-width:${(1 + Math.min(stats.streak, 14) * 5 / 14).toFixed(2)}px;--streak-line-opacity:${(0.18 + Math.min(stats.streak, 14) * 0.82 / 14).toFixed(2)};--streak-line-glow:${Math.min(stats.streak, 14)}px" aria-label="Schedule timeline with a ${stats.streak}-day completion streak">`;
 
   for (const block of blocks) {
     const isNow = nowMin >= toMin(block.start) && nowMin < toMin(block.end);
     const done = !!completedToday[block.id];
-    const cat = CATS[block.cat] || CATS.base;
     html += `
-      <div class="block" style="border-left-color:${isNow ? cat.color : '#1e293b'}">
+      <div class="block ${done ? "is-complete" : ""} ${isNow ? "is-current" : ""}">
+        <span class="timeline-node" aria-hidden="true"></span>
         <span class="btime">${escapeHtml(block.start)}</span>
-        <span class="dot" style="background:${cat.color}"></span>
-        <span class="blabel ${done ? "done" : ""} ${isNow ? "now" : ""}">${escapeHtml(block.label)}</span>
-        ${isNow ? `<span class="nowtag" style="color:${cat.color}">now</span>` : ""}
-        <button class="check ${done ? "on" : ""}" data-toggle-block="${escapeHtml(block.id)}">${icon()}</button>
+        <div class="block-copy"><span class="blabel ${done ? "done" : ""} ${isNow ? "now" : ""}">${escapeHtml(block.label)}</span><span class="bcategory">[${escapeHtml(block.cat)}]</span></div>
+        ${isNow ? `<span class="nowtag">now</span>` : ""}
+        <button class="check ${done ? "on" : ""}" data-toggle-block="${escapeHtml(block.id)}" aria-label="Mark ${escapeHtml(block.label)} ${done ? "incomplete" : "complete"}"><span class="icon" data-icon="check" aria-hidden="true"></span></button>
       </div>`;
   }
   return `${html}</div>`;
@@ -112,7 +126,7 @@ function renderScheduleEditorRow(schedule, block, index, isNew = false) {
 export function renderScheduleEditor(schedule) {
   const newBlock = { start: "", end: "", label: "", cat: "base", days: [...ALL] };
   return `<div class="module schedule-editor">
-    <div class="mtitle">Schedule editor</div>
+    <div class="mtitle"><span class="icon" data-icon="list-todo" aria-hidden="true"></span>Schedule editor</div>
     <p class="settings-copy">Changes save to <code>schedule.json</code> in your Gist. Use Up and Down to reorder blocks.</p>
     <div class="schedule-editor-title">Existing blocks</div>
     ${schedule.map((block, index) => renderScheduleEditorRow(schedule, block, index)).join("")}

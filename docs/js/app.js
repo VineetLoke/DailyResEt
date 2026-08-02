@@ -15,6 +15,7 @@ import {
 import {
   DEFAULT_SCHEDULE,
   applyScheduleAction,
+  computeScheduleStats,
   renderSchedule,
   renderScheduleEditor,
 } from "./schedule.js";
@@ -28,10 +29,29 @@ const app = document.getElementById("app");
 const nav = document.getElementById("main-nav");
 const router = createRouter(nav, renderRoute);
 
+// Lucide Static v0.468.0 (ISC), copied from unpkg.com/lucide-static for inline use.
+const ICONS = {
+  "calendar-days": `<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>`,
+  dumbbell: `<path d="M14.4 14.4 9.6 9.6"/><path d="M18.657 21.485a2 2 0 1 1-2.829-2.828l-1.767 1.768a2 2 0 1 1-2.829-2.829l6.364-6.364a2 2 0 1 1 2.829 2.829l-1.768 1.767a2 2 0 1 1 2.828 2.829z"/><path d="m21.5 21.5-1.4-1.4"/><path d="M3.9 3.9 2.5 2.5"/><path d="M6.404 12.768a2 2 0 1 1-2.829-2.829l1.768-1.767a2 2 0 1 1-2.828-2.829l2.828-2.828a2 2 0 1 1 2.829 2.828l1.767-1.768a2 2 0 1 1 2.829 2.829z"/>`,
+  "book-open": `<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>`,
+  "notebook-pen": `<path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4"/><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><path d="M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/>`,
+  "settings-2": `<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>`,
+  "list-todo": `<rect x="3" y="5" width="6" height="6" rx="1"/><path d="m3 17 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>`,
+  check: `<path d="M20 6 9 17l-5-5"/>`,
+};
+
 let credentials = getStoredCredentials();
 let state = { completedByDate: {}, workout: [], reading: [], log: [] };
 let schedule = [];
 let saving = false;
+
+function renderIcons(root) {
+  root.querySelectorAll("[data-icon]").forEach(element => {
+    const paths = ICONS[element.dataset.icon];
+    if (!paths) return;
+    element.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true">${paths}</svg>`;
+  });
+}
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -124,24 +144,25 @@ async function persistSchedule(shouldRender = true) {
 }
 
 function renderSettings() {
-  return `<div class="module">
-    <div class="mtitle">Settings</div>
+  return `<section class="settings-page"><div class="module settings-panel">
+    <div class="mtitle"><span class="icon" data-icon="settings-2" aria-hidden="true"></span>Settings</div>
     <p class="settings-copy">This device is connected with credentials stored only in this browser's localStorage.</p>
     <div class="settings-actions">
       <button class="settings-btn" id="refresh">${saving ? "Saving…" : "Refresh data"}</button>
       <button class="settings-btn" id="reconnect">Reconnect this device</button>
     </div>
-  </div>${renderScheduleEditor(schedule)}`;
+  </div>${renderScheduleEditor(schedule)}</section>`;
 }
 
 function renderRoute(route) {
   if (route === "schedule") {
-    app.innerHTML = renderSchedule(schedule, state.completedByDate);
+    app.innerHTML = renderSchedule(schedule, state.completedByDate, computeScheduleStats(schedule, state.completedByDate));
   } else if (MODULES[route]) {
     app.innerHTML = renderModule(route, state[route] || []);
   } else {
     app.innerHTML = renderSettings();
   }
+  renderIcons(app);
   wireEvents();
 }
 
@@ -201,6 +222,7 @@ function wireEvents() {
 }
 
 router.start();
+renderIcons(nav);
 
 if (credentials.gistId && credentials.token) {
   init();
